@@ -19,6 +19,8 @@ var tmpfile = phantom.args[0];
 var mochaHelper = phantom.args[1];
 // The Mocha .html test file to run.
 var url = phantom.args[2];
+// The files containing the actual tests
+var specfiles = phantom.args.slice(3, phantom.args.length-1);
 
 // Keep track of the last time a Mocha message was sent.
 var last = new Date();
@@ -102,8 +104,16 @@ page.open(url, function(status) {
     // Inject Mocha helper file.
     sendDebugMessage('inject', mochaHelper);
     page.injectJs(mochaHelper);
+    specfiles.forEach(function (specfile) {
+      sendDebugMessage('inject', specfile);
+      page.injectJs(specfile);
+    });
     // Because injection happens after window load, "begin" must be sent
     // manually.
     sendMessage(['begin']);
+    sendDebugMessage('running mocha..');
+    page.evaluate(function() {
+      $(function() { mocha.run(); });
+    });
   }
 });

@@ -140,18 +140,14 @@ module.exports = function(grunt) {
 
   grunt.registerMultiTask('mocha', 'Run Mocha unit tests in a headless PhantomJS instance.', function() {
     // Get files as URLs.
-    var urls = file.expandFileURLs(this.file.src);
-    
+    var url = file.expandFileURLs(this.data.runner)[0];
+    var specs = file.expandFiles(this.data.specs);
+
     // This task is asynchronous.
     var done = this.async();
 
     // Reset status.
     status = {failed: 0, passed: 0, total: 0, duration: 0};
-
-    // Process each filepath in-order.
-    utils.async.forEachSeries(urls, function(url, next) {
-      var basename = path.basename(url);
-      verbose.subhead('Testing ' + basename).or.write('Testing ' + basename);
 
       // Create temporary file to be used for grunt-phantom communication.
       var tempfile = new Tempfile();
@@ -181,7 +177,7 @@ module.exports = function(grunt) {
         // Re-enable logging.
         log.muted = false;
         // Iterate over all lines that haven't already been processed.
-        var done = lines.slice(n).some(function(line) {
+        var all_done = lines.slice(n).some(function(line) {
           // Get args and method.
           var args = JSON.parse(line);
           var method = args.shift();
@@ -195,10 +191,29 @@ module.exports = function(grunt) {
           return (/^done/).test(method);
         });
 
-        if (done) {
+        if (all_done) {
           // All done.
           cleanup();
-          next();
+          // Log results.
+          if (status.failed > 0) {
+            growl(status.failed + ' of ' + status.total + ' tests failed!', {
+              image: __dirname + '/mocha/error.png',
+              title: 'Tests Failed',
+              priority: 3
+            });
+            grunt.warn(status.failed + '/' + status.total + ' assertions failed (' +
+              status.duration + 'ms)', Math.min(99, 90 + status.failed));
+          } else {
+            growl('All Clear: ' + status.total + ' tests passed', {
+              title: 'Tests Passed',
+              image: __dirname + '/mocha/ok.png'
+            });
+            verbose.writeln();
+            log.ok(status.total + ' assertions passed (' + status.duration + 'ms)');
+          }
+
+          // All done!
+          done();
         } else {
           // Update n so previously processed lines are ignored.
           n = lines.length;
@@ -218,11 +233,8 @@ module.exports = function(grunt) {
           // The Mocha helper file to be injected.
           // task.getFile('../test/run-mocha.js'),
           task.getFile('mocha/mocha-helper.js'),
-          // URL to the Mocha .html test file to run.
           url,
-          // PhantomJS options.
-          '--config=' + task.getFile('mocha/phantom.json')
-        ],
+        ].concat(specs).concat(['--config=' + task.getFile('mocha/phantom.json')]),
         done: function(err) {
           if (err) {
             cleanup();
@@ -230,30 +242,6 @@ module.exports = function(grunt) {
           }
         },
       });
-    }, function(err) {
-      // All tests have been run.
-
-      // Log results.
-      if (status.failed > 0) {
-        growl(status.failed + ' of ' + status.total + ' tests failed!', {
-          image: __dirname + '/mocha/error.png',
-          title: 'Tests Failed',
-          priority: 3
-        });
-        grunt.warn(status.failed + '/' + status.total + ' assertions failed (' +
-          status.duration + 'ms)', Math.min(99, 90 + status.failed));
-      } else {
-        growl('All Clear: ' + status.total + ' tests passed', {
-          title: 'Tests Passed',
-          image: __dirname + '/mocha/ok.png'
-        });
-        verbose.writeln();
-        log.ok(status.total + ' assertions passed (' + status.duration + 'ms)');
-      }
-
-      // All done!
-      done();
-    });
   });
 
   // ==========================================================================
